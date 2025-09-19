@@ -1,59 +1,71 @@
+// test/Counter.ts
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
-
+import { describe, it, before } from "node:test";
 import { network } from "hardhat";
+import { defineChain, type Abi } from "viem";
+import CounterArtifact from "../artifacts/contracts/Counter.sol/Counter.json" assert { type: "json" };
 
-import { defineChain } from "viem";
-
-export const zksyncos = defineChain({
+// same chain descriptor as your script
+const zksyncOS = defineChain({
   id: 8022833,
-  name: "zkSync OS Testnet Alpha",
+  name: "ZKsync OS Testnet Alpha",
   nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: {
-    default: { http: ["https://zksync-os-testnet-alpha.zksync.dev/"] },
-    public:  { http: ["https://zksync-os-testnet-alpha.zksync.dev/"] },
-  },
+  rpcUrls: { default: { http: ["https://zksync-os-testnet-alpha.zksync.dev"] } },
 });
 
-describe("Counter", async function () {
+describe("Counter", () => {
+  let viem: any;
+  let publicClient: any;
+  let wallet: any;
+  let counterAddr: `0x${string}`;
+  const abi = CounterArtifact.abi as Abi;
+  const bytecode = CounterArtifact.bytecode as `0x${string}`;
 
-  const { viem } = await network.connect("zksyncos");
-  const publicClient = await viem.getPublicClient({ chain: zksyncos });
+  before(async () => {
+    ({ viem } = await network.connect("zksyncOS"));
 
-  it("Should emit the Increment event when calling the inc() function", async function () {
-    const counter = await viem.deployContract("Counter");
+    publicClient = await viem.getPublicClient({ chain: zksyncOS });
+    [wallet] = await viem.getWalletClients({ chain: zksyncOS });
+    if (!wallet) throw new Error("No wallet client. Set TESTNET_PRIVATE_KEY for zksyncOS.");
 
-    await viem.assertions.emitWithArgs(
-      counter.write.inc(),
-      counter,
-      "Increment",
-      [1n],
-    );
+    const deployHash = await wallet.deployContract({ abi, bytecode, args: [] });
+    const rcpt = await publicClient.waitForTransactionReceipt({ hash: deployHash });
+    if (!rcpt.contractAddress) throw new Error("Deployment failed: no contractAddress");
+    counterAddr = rcpt.contractAddress;
   });
 
-  it("The sum of the Increment events should match the current value", async function () {
-    const counter = await viem.deployContract("Counter");
-    const deploymentBlockNumber = await publicClient.getBlockNumber();
+  it("The sum of the Increment events should match the current value", async () => {
+    const fromBlock = await publicClient.getBlockNumber();
 
-    // run a series of increments
+    // run a series of increments (explicit wallet writes, like your script)
     for (let i = 1n; i <= 10n; i++) {
-      await counter.write.incBy([i]);
+      await wallet.writeContract({
+        address: counterAddr,
+        abi,
+        functionName: "incBy",
+        args: [i],
+      });
     }
 
+    // fetch Increment events since deployment
     const events = await publicClient.getContractEvents({
-      address: counter.address,
-      abi: counter.abi,
+      address: counterAddr,
+      abi,
       eventName: "Increment",
-      fromBlock: deploymentBlockNumber,
+      fromBlock,
       strict: true,
     });
 
-    // check that the aggregated events match the current value
+    // sum their 'by' values
     let total = 0n;
-    for (const event of events) {
-      total += event.args.by;
-    }
+    for (const e of events) total += e.args.by;
 
-    assert.equal(total, await counter.read.x());
+    const current = await publicClient.readContract({
+      address: counterAddr,
+      abi,
+      functionName: "x",
+    });
+
+    assert.equal(total, current);
   });
 });

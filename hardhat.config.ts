@@ -6,6 +6,12 @@ import "@nomicfoundation/hardhat-viem";
 
 const config: HardhatUserConfig = {
   plugins: [hardhatToolboxViemPlugin],
+  chainDescriptors: {
+    8022833: {
+      name: "zksyncOS",
+      chainType: "generic"
+    },
+  },
   solidity: {
     profiles: {
       default: {
@@ -31,7 +37,7 @@ const config: HardhatUserConfig = {
       chainType: "generic",
       chainId: 8022833,
       url: "https://zksync-os-testnet-alpha.zksync.dev",
-      accounts: [configVariable("TESTNET_PRIVATE_KEY")],
+      accounts: ["0x"],
     },
     hardhatMainnet: {
       type: "edr-simulated",
