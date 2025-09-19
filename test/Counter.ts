@@ -1,53 +1,74 @@
 // test/Counter.ts
 import assert from "node:assert/strict";
-import { describe, it, before } from "node:test";
+import { describe, it } from "node:test";
+
 import { network } from "hardhat";
 import { defineChain, type Abi } from "viem";
 import CounterArtifact from "../artifacts/contracts/Counter.sol/Counter.json" assert { type: "json" };
 
-// same chain descriptor as your script
-const zksyncOS = defineChain({
+export const zksyncos = defineChain({
   id: 8022833,
-  name: "ZKsync OS Testnet Alpha",
+  name: "zkSync OS Testnet Alpha",
   nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: { default: { http: ["https://zksync-os-testnet-alpha.zksync.dev"] } },
+  rpcUrls: {
+    default: { http: ["https://zksync-os-testnet-alpha.zksync.dev/"] },
+    public:  { http: ["https://zksync-os-testnet-alpha.zksync.dev/"] },
+  },
 });
 
-describe("Counter", () => {
-  let viem: any;
-  let publicClient: any;
-  let wallet: any;
-  let counterAddr: `0x${string}`;
+describe("Counter", async function () {
+  const { viem } = await network.connect("zksyncOS");
+
+  // clients bound to our explicit chain
+  const publicClient = await viem.getPublicClient({ chain: zksyncos });
+  const [wallet] = await viem.getWalletClients({ chain: zksyncos });
+  if (!wallet) throw new Error("No wallet client. Set TESTNET_PRIVATE_KEY for zksyncOS.");
+
   const abi = CounterArtifact.abi as Abi;
   const bytecode = CounterArtifact.bytecode as `0x${string}`;
 
-  before(async () => {
-    ({ viem } = await network.connect("zksyncOS"));
-
-    publicClient = await viem.getPublicClient({ chain: zksyncOS });
-    [wallet] = await viem.getWalletClients({ chain: zksyncOS });
-    if (!wallet) throw new Error("No wallet client. Set TESTNET_PRIVATE_KEY for zksyncOS.");
-
+  it("Should emit the Increment event when calling the inc() function", async function () {
     const deployHash = await wallet.deployContract({ abi, bytecode, args: [] });
-    const rcpt = await publicClient.waitForTransactionReceipt({ hash: deployHash });
-    if (!rcpt.contractAddress) throw new Error("Deployment failed: no contractAddress");
-    counterAddr = rcpt.contractAddress;
+    const deployRcpt = await publicClient.waitForTransactionReceipt({ hash: deployHash });
+    const counterAddr = deployRcpt.contractAddress!;
+    const fromBlock = deployRcpt.blockNumber!;
+
+    // call inc()
+    const txHash = await wallet.writeContract({
+      address: counterAddr,
+      abi,
+      functionName: "inc",
+      args: [],
+    });
+    await publicClient.waitForTransactionReceipt({ hash: txHash });
+
+    const events = await publicClient.getContractEvents({
+      address: counterAddr,
+      abi,
+      eventName: "Increment",
+      fromBlock,
+      strict: true,
+    });
+    assert.ok(events.length >= 1, "expected at least one Increment event");
+    assert.equal(events.at(-1)!.args.by, 1n);
   });
 
-  it("The sum of the Increment events should match the current value", async () => {
-    const fromBlock = await publicClient.getBlockNumber();
+  it("The sum of the Increment events should match the current value", async function () {
+    const deployHash = await wallet.deployContract({ abi, bytecode, args: [] });
+    const deployRcpt = await publicClient.waitForTransactionReceipt({ hash: deployHash });
+    const counterAddr = deployRcpt.contractAddress!;
+    const fromBlock = deployRcpt.blockNumber!;
 
-    // run a series of increments (explicit wallet writes, like your script)
     for (let i = 1n; i <= 10n; i++) {
-      await wallet.writeContract({
+      const h = await wallet.writeContract({
         address: counterAddr,
         abi,
         functionName: "incBy",
         args: [i],
       });
+      await publicClient.waitForTransactionReceipt({ hash: h });
     }
 
-    // fetch Increment events since deployment
     const events = await publicClient.getContractEvents({
       address: counterAddr,
       abi,
@@ -56,7 +77,6 @@ describe("Counter", () => {
       strict: true,
     });
 
-    // sum their 'by' values
     let total = 0n;
     for (const e of events) total += e.args.by;
 
