@@ -1,9 +1,10 @@
+// test/Counter.ts
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { network } from "hardhat";
-
-import { defineChain } from "viem";
+import { defineChain, type Abi } from "viem";
+import CounterArtifact from "../artifacts/contracts/Counter.sol/Counter.json" assert { type: "json" };
 
 export const zksyncos = defineChain({
   id: 8022833,
@@ -16,44 +17,75 @@ export const zksyncos = defineChain({
 });
 
 describe("Counter", async function () {
+  const { viem } = await network.connect("zksyncOS");
 
-  const { viem } = await network.connect("zksyncos");
+  // clients bound to our explicit chain
   const publicClient = await viem.getPublicClient({ chain: zksyncos });
+  const [wallet] = await viem.getWalletClients({ chain: zksyncos });
+  if (!wallet) throw new Error("No wallet client. Set TESTNET_PRIVATE_KEY for zksyncOS.");
+
+  const abi = CounterArtifact.abi as Abi;
+  const bytecode = CounterArtifact.bytecode as `0x${string}`;
 
   it("Should emit the Increment event when calling the inc() function", async function () {
-    const counter = await viem.deployContract("Counter");
+    const deployHash = await wallet.deployContract({ abi, bytecode, args: [] });
+    const deployRcpt = await publicClient.waitForTransactionReceipt({ hash: deployHash });
+    const counterAddr = deployRcpt.contractAddress!;
+    const fromBlock = deployRcpt.blockNumber!;
 
-    await viem.assertions.emitWithArgs(
-      counter.write.inc(),
-      counter,
-      "Increment",
-      [1n],
-    );
+    // call inc()
+    const txHash = await wallet.writeContract({
+      address: counterAddr,
+      abi,
+      functionName: "inc",
+      args: [],
+    });
+    await publicClient.waitForTransactionReceipt({ hash: txHash });
+
+    const events = await publicClient.getContractEvents({
+      address: counterAddr,
+      abi,
+      eventName: "Increment",
+      fromBlock,
+      strict: true,
+    });
+    assert.ok(events.length >= 1, "expected at least one Increment event");
+    assert.equal(events.at(-1)!.args.by, 1n);
   });
 
   it("The sum of the Increment events should match the current value", async function () {
-    const counter = await viem.deployContract("Counter");
-    const deploymentBlockNumber = await publicClient.getBlockNumber();
+    const deployHash = await wallet.deployContract({ abi, bytecode, args: [] });
+    const deployRcpt = await publicClient.waitForTransactionReceipt({ hash: deployHash });
+    const counterAddr = deployRcpt.contractAddress!;
+    const fromBlock = deployRcpt.blockNumber!;
 
-    // run a series of increments
     for (let i = 1n; i <= 10n; i++) {
-      await counter.write.incBy([i]);
+      const h = await wallet.writeContract({
+        address: counterAddr,
+        abi,
+        functionName: "incBy",
+        args: [i],
+      });
+      await publicClient.waitForTransactionReceipt({ hash: h });
     }
 
     const events = await publicClient.getContractEvents({
-      address: counter.address,
-      abi: counter.abi,
+      address: counterAddr,
+      abi,
       eventName: "Increment",
-      fromBlock: deploymentBlockNumber,
+      fromBlock,
       strict: true,
     });
 
-    // check that the aggregated events match the current value
     let total = 0n;
-    for (const event of events) {
-      total += event.args.by;
-    }
+    for (const e of events) total += e.args.by;
 
-    assert.equal(total, await counter.read.x());
+    const current = await publicClient.readContract({
+      address: counterAddr,
+      abi,
+      functionName: "x",
+    });
+
+    assert.equal(total, current);
   });
 });

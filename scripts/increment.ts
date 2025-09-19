@@ -1,13 +1,10 @@
 import { network } from "hardhat";
 import { Abi, defineChain } from "viem";
+import CounterArtifact from "../artifacts/contracts/Counter.sol/Counter.json" assert { type: "json" };
 
-const CONTRACT_ADDRESS = '0x7Be3f2d08500Fe75B92b9561287a16962C697cb7'
+const CONTRACT_ADDRESS = '0x7Be3f2d08500Fe75B92b9561287a16962C697cb7';
 
-const { viem } = await network.connect({
-  network: "zksyncOS",
-  chainType: "generic",
-});
-
+const { viem } = await network.connect("zksyncOS");
 
 const zksyncOS = defineChain({
   id: 8022833,
@@ -17,29 +14,30 @@ const zksyncOS = defineChain({
   rpcUrls: { default: { http: ["https://zksync-os-testnet-alpha.zksync.dev"] } },
 });
 
-const publicClient = await viem.getPublicClient({chain: zksyncOS,});
-const [senderClient] = await viem.getWalletClients({chain: zksyncOS,});
+const publicClient = await viem.getPublicClient({ chain: zksyncOS });
+const [senderClient] = await viem.getWalletClients({ chain: zksyncOS });
+if (!senderClient) throw new Error("No wallet client. Set TESTNET_PRIVATE_KEY in hardhat config.");
 
-const counterContract = await viem.getContractAt("Counter", CONTRACT_ADDRESS);
+const abi = CounterArtifact.abi as Abi;
 
 const initialCount = await publicClient.readContract({
-  address: counterContract.address,
-  abi: counterContract.abi as Abi,
-  functionName: 'x'
+  address: CONTRACT_ADDRESS,
+  abi,
+  functionName: 'x',
 });
 console.log("Initial count:", initialCount);
 
 const tx = await senderClient.writeContract({
- address: counterContract.address,
-  abi: counterContract.abi as Abi,
-  functionName: 'inc'
+  address: CONTRACT_ADDRESS,
+  abi,
+  functionName: 'inc',
 });
 await publicClient.waitForTransactionReceipt({ hash: tx });
 console.log("Transaction sent successfully");
 
 const newCount = await publicClient.readContract({
-  address: counterContract.address,
-  abi: counterContract.abi as Abi,
-  functionName: 'x'
+  address: CONTRACT_ADDRESS,
+  abi,
+  functionName: 'x',
 });
 console.log("New count:", newCount);
