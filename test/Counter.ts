@@ -3,9 +3,22 @@ import { describe, it } from "node:test";
 
 import { network } from "hardhat";
 
+import { defineChain } from "viem";
+
+export const zksyncos = defineChain({
+  id: 8022833,
+  name: "zkSync OS Testnet Alpha",
+  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  rpcUrls: {
+    default: { http: ["https://zksync-os-testnet-alpha.zksync.dev/"] },
+    public:  { http: ["https://zksync-os-testnet-alpha.zksync.dev/"] },
+  },
+});
+
 describe("Counter", async function () {
-  const { viem } = await network.connect();
-  const publicClient = await viem.getPublicClient();
+
+  const { viem } = await network.connect("zksyncos");
+  const publicClient = await viem.getPublicClient({ chain: zksyncos });
 
   it("Should emit the Increment event when calling the inc() function", async function () {
     const counter = await viem.deployContract("Counter");
