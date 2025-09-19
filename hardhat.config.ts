@@ -37,7 +37,7 @@ const config: HardhatUserConfig = {
       chainType: "generic",
       chainId: 8022833,
       url: "https://zksync-os-testnet-alpha.zksync.dev",
-      accounts: ["0x3a86a76b2aee7d0742f2da930b3289cfcff31f57ffc923c672715ead32dc01a0"],
+      accounts: ["0x"],
     },
     hardhatMainnet: {
       type: "edr-simulated",
