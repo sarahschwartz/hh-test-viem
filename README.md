@@ -17,7 +17,7 @@ bun install
 Compile contracts:
 
 ```bash
-bun install
+bun compile
 ```
 
 Deploy shadow account and mock interop handler contracts:
