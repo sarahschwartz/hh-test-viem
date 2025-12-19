@@ -30,7 +30,7 @@ const mirrorContract = await viem.getContractAt("ShadowMirror", mirror, {
 });
 
 // tokens are already minted to the shadow account
-// get balance, and then approve the balance to send to default account
+// get balance, and then approve and transfer the balance to send to default account
 
 const initialShadowAccountBalance = await getTokenBalance(shadowAccount);
 console.log("initial shadow account balance: ", initialShadowAccountBalance);
